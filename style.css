@@ -339,20 +339,29 @@ section {
 }
 
 /* ---------- Rodapé ---------- */
+/* ---------- Rodapé ---------- */
 .rodape {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 40px 22px;
+  padding: 48px 22px 42px;
+  background: #050505;
 }
 
 .rodape-inner {
   max-width: 980px;
   margin: 0 auto;
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
   color: var(--texto-3);
   font-size: 0.85rem;
+}
+
+.rodape-marca {
+  color: var(--texto-2);
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 /* ---------- App de chat ---------- */
@@ -720,5 +729,67 @@ section {
   .chamada {
     padding: 28px;
     gap: 22px;
+  }
+}
+/* ---------- Créditos NVIDIA ---------- */
+.creditos-ia {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0a0a0a;
+  padding: 16px 22px;
+}
+
+.creditos-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.creditos-img {
+  height: 44px;
+  width: auto;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  display: block;
+}
+
+.creditos-divisor {
+  width: 1px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.creditos-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.creditos-texto strong {
+  font-size: 0.84rem;
+  color: var(--texto);
+  letter-spacing: 0.01em;
+}
+
+.creditos-texto span {
+  font-size: 0.74rem;
+  color: var(--texto-3);
+}
+@media (max-width: 760px) {
+  .creditos-divisor {
+    display: none;
+  }
+
+  .creditos-inner {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .creditos-texto {
+    text-align: center;
   }
 }
