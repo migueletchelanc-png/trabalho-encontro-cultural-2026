@@ -1,4 +1,4 @@
-// Mantenha a URL do seu Worker aqui
+// URL do seu Worker no Cloudflare
 const API_URL = "https://ia-nvidia-proxy.migueletchelanc.workers.dev/";
 
 /* ---------- Troca de abas ---------- */
@@ -78,7 +78,6 @@ function mensagemIA(texto, raciocinio) {
   textoEl.className = "texto-resposta";
   textoEl.textContent = texto;
 
-  // Bloco de pensamento
   const pensamentoBloco = document.createElement("div");
   pensamentoBloco.className = "pensamento-bloco";
 
@@ -156,7 +155,10 @@ async function enviarMensagem(texto) {
     const dados = await resposta.json();
     indicador.remove();
 
-    if (!resposta.ok) throw new Error("erro");
+    if (!resposta.ok) {
+      console.error("Erro da IA:", dados);
+      throw new Error("erro");
+    }
 
     const textoIA =
       dados.texto ||
