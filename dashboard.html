@@ -40,10 +40,12 @@
     .dash-form {
       display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     .dash-form input {
       flex: 1;
+      min-width: 0;
       background: #121212;
       border: 1px solid #2a2a2a;
       border-radius: 999px;
@@ -82,6 +84,7 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .status-pill {
@@ -129,6 +132,7 @@
     .card-label {
       color: var(--texto-3);
       font-size: 0.78rem;
+      margin-top: 4px;
     }
 
     .grafico-card {
@@ -241,15 +245,143 @@
       font-weight: 600;
       cursor: pointer;
       transition: 0.2s;
+      font-family: inherit;
     }
 
     .btn-perigo:hover {
       background: rgba(255, 107, 107, 0.1);
     }
 
+    /* ---------- Celular (até 760px) ---------- */
     @media (max-width: 760px) {
+      .dash-main {
+        padding: 90px 16px 40px;
+      }
+
+      .dash-card {
+        padding: 24px 20px;
+      }
+
+      #login-area {
+        margin: 8vh auto 0;
+        padding: 0 8px;
+      }
+
+      #login-area h1 {
+        font-size: 1.5rem;
+      }
+
+      .dash-form {
+        flex-direction: column;
+      }
+
+      .dash-form input,
+      .dash-form .btn-verde {
+        width: 100%;
+      }
+
+      .dash-topo {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .dash-topo > div {
+        width: 100%;
+        justify-content: space-between;
+      }
+
       .cards {
         grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      /* Primeiro card (visitas totais) em destaque, ocupando 2 colunas */
+      .card:first-child {
+        grid-column: span 2;
+        background: linear-gradient(135deg, #0d1a04, #0a0a0a);
+        border-color: rgba(118, 185, 0, 0.3);
+      }
+
+      .card:first-child .card-num {
+        font-size: 2.6rem;
+      }
+
+      .card {
+        padding: 18px 12px;
+      }
+
+      .card-num {
+        font-size: 1.6rem;
+      }
+
+      .card-label {
+        font-size: 0.7rem;
+      }
+
+      .grafico-card h2,
+      .controles h2 {
+        font-size: 1rem;
+        margin-bottom: 16px;
+      }
+
+      .grafico {
+        height: 140px;
+        gap: 6px;
+      }
+
+      .g-barras {
+        height: 110px;
+        gap: 3px;
+      }
+
+      .g-bar {
+        width: 10px;
+      }
+
+      .g-label {
+        font-size: 0.65rem;
+      }
+
+      .legenda {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .controles-linha {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 16px 0;
+      }
+
+      .controles-linha > div {
+        text-align: left;
+      }
+
+      .controles-linha .btn,
+      .controles-linha .btn-perigo {
+        width: 100%;
+        padding: 12px 22px;
+        text-align: center;
+      }
+    }
+
+    /* ---------- Telas muito pequenas ---------- */
+    @media (max-width: 480px) {
+      .dash-topo h1 {
+        font-size: 1.35rem;
+      }
+
+      .dash-topo .btn-mini {
+        padding: 7px 12px;
+        font-size: 0.78rem;
+      }
+
+      .status-pill {
+        padding: 6px 12px;
+        font-size: 0.72rem;
       }
     }
   </style>
@@ -273,7 +405,7 @@
       <h1>Painel de Controle</h1>
       <p class="dash-sub">Acesse com a sua senha de administração.</p>
       <form id="form-login" class="dash-form">
-        <input type="password" id="senha-input" placeholder="Senha de acesso" required />
+        <input type="password" id="senha-input" placeholder="Senha de acesso" required autocomplete="current-password" />
         <button class="btn btn-verde" type="submit">Entrar</button>
       </form>
       <p id="login-erro" class="erro-texto"></p>
@@ -368,6 +500,7 @@
       senha = "";
       painelArea.hidden = true;
       loginArea.hidden = false;
+      senhaInput.value = "";
     });
 
     document.getElementById("btn-atualizar").addEventListener("click", () => carregar(true));
