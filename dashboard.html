@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Controle — 801 Cerc Unidade 2</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .dash-main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 110px 22px 60px;
+    }
+
+    .dash-card {
+      background: #0a0a0a;
+      border: 1px solid #232323;
+      border-radius: 18px;
+      padding: 34px;
+    }
+
+    #login-area {
+      max-width: 460px;
+      margin: 12vh auto;
+      text-align: center;
+    }
+
+    #login-area h1 {
+      font-size: 1.8rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    .dash-sub {
+      color: var(--texto-2);
+      margin-bottom: 26px;
+      font-size: 0.95rem;
+    }
+
+    .dash-form {
+      display: flex;
+      gap: 10px;
+    }
+
+    .dash-form input {
+      flex: 1;
+      background: #121212;
+      border: 1px solid #2a2a2a;
+      border-radius: 999px;
+      padding: 12px 20px;
+      color: var(--texto);
+      outline: none;
+      font-size: 1rem;
+    }
+
+    .dash-form input:focus {
+      border-color: var(--verde);
+    }
+
+    .erro-texto {
+      color: #ff6b6b;
+      margin-top: 12px;
+      font-size: 0.85rem;
+      min-height: 1em;
+    }
+
+    .dash-topo {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 22px;
+    }
+
+    .dash-topo h1 {
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+
+    .dash-topo > div {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .status-pill {
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .status-pill.on {
+      background: rgba(118, 185, 0, 0.12);
+      color: var(--verde);
+      border: 1px solid rgba(118, 185, 0, 0.4);
+    }
+
+    .status-pill.off {
+      background: rgba(255, 107, 107, 0.1);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 107, 107, 0.4);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .card {
+      background: #0a0a0a;
+      border: 1px solid #232323;
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+    }
+
+    .card-num {
+      display: block;
+      color: var(--verde);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .card-label {
+      color: var(--texto-3);
+      font-size: 0.78rem;
+    }
+
+    .grafico-card {
+      margin-bottom: 22px;
+    }
+
+    .grafico-card h2,
+    .controles h2 {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+    }
+
+    .grafico {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      height: 170px;
+    }
+
+    .g-dia {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      height: 100%;
+      justify-content: flex-end;
+    }
+
+    .g-barras {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+      height: 130px;
+    }
+
+    .g-bar {
+      width: 14px;
+      border-radius: 4px 4px 0 0;
+    }
+
+    .g-bar.msg {
+      background: var(--verde);
+    }
+
+    .g-bar.vis {
+      background: #3a3a3a;
+    }
+
+    .g-label {
+      color: var(--texto-3);
+      font-size: 0.7rem;
+    }
+
+    .legenda {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+      color: var(--texto-3);
+      font-size: 0.75rem;
+      align-items: center;
+    }
+
+    .dot-msg,
+    .dot-vis {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .dot-msg {
+      background: var(--verde);
+    }
+
+    .dot-vis {
+      background: #3a3a3a;
+    }
+
+    .controles-linha {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 0;
+      flex-wrap: wrap;
+    }
+
+    .controles-linha + .controles-linha {
+      border-top: 1px solid #1c1c1c;
+    }
+
+    .controles-linha strong {
+      font-size: 0.95rem;
+    }
+
+    .controles-linha p {
+      color: var(--texto-3);
+      font-size: 0.82rem;
+      margin-top: 4px;
+    }
+
+    .btn-perigo {
+      background: transparent;
+      color: #ff6b6b;
+      border: 1px solid #ff6b6b;
+      border-radius: 980px;
+      padding: 10px 22px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .btn-perigo:hover {
+      background: rgba(255, 107, 107, 0.1);
+    }
+
+    @media (max-width: 760px) {
+      .cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="marca" href="index.html">
+        801 Cerc Unidade 2<span class="ponto"></span>
+      </a>
+      <div class="nav-abas">
+        <a class="nav-link" href="index.html">Voltar ao site</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="dash-main">
+
+    <section id="login-area" class="dash-card">
+      <h1>Painel de Controle</h1>
+      <p class="dash-sub">Acesse com a sua senha de administração.</p>
+      <form id="form-login" class="dash-form">
+        <input type="password" id="senha-input" placeholder="Senha de acesso" required />
+        <button class="btn btn-verde" type="submit">Entrar</button>
+      </form>
+      <p id="login-erro" class="erro-texto"></p>
+    </section>
+
+    <section id="painel-area" hidden>
+
+      <div class="dash-topo">
+        <h1>Visão geral</h1>
+        <div>
+          <span id="status-ia" class="status-pill on">IA ativa</span>
+          <button id="btn-atualizar" class="btn-mini">Atualizar</button>
+          <button id="btn-sair" class="btn-mini">Sair</button>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <span class="card-num" id="c-visitas">0</span>
+          <span class="card-label">Visitas (total)</span>
+        </div>
+        <div class="card">
+          <span class="card-num" id="c-mensagens">0</span>
+          <span class="card-label">Mensagens (total)</span>
+        </div>
+        <div class="card">
+          <span class="card-num" id="c-hoje-visitas">0</span>
+          <span class="card-label">Visitas hoje</span>
+        </div>
+        <div class="card">
+          <span class="card-num" id="c-hoje-msg">0</span>
+          <span class="card-label">Mensagens hoje</span>
+        </div>
+        <div class="card">
+          <span class="card-num" id="c-erros">0</span>
+          <span class="card-label">Erros</span>
+        </div>
+      </div>
+
+      <div class="dash-card grafico-card">
+        <h2>Últimos 7 dias</h2>
+        <div class="grafico" id="grafico"></div>
+        <div class="legenda">
+          <span><span class="dot-msg"></span>Mensagens</span>
+          <span><span class="dot-vis"></span>Visitas</span>
+        </div>
+      </div>
+
+      <div class="dash-card controles">
+        <h2>Controles do site</h2>
+
+        <div class="controles-linha">
+          <div>
+            <strong>IA de Apoio</strong>
+            <p>Ligue ou desligue o chat de IA (modo manutenção).</p>
+          </div>
+          <button id="btn-toggle-ia" class="btn btn-contorno">Desligar IA</button>
+        </div>
+
+        <div class="controles-linha">
+          <div>
+            <strong>Zerar estatísticas</strong>
+            <p>Apaga todos os contadores de visitas e mensagens.</p>
+          </div>
+          <button id="btn-reset" class="btn-perigo">Zerar</button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    const API = "https://ia-nvidia-proxy.migueletchelanc.workers.dev/";
+    let senha = sessionStorage.getItem("dashSenha") || "";
+
+    const loginArea = document.getElementById("login-area");
+    const painelArea = document.getElementById("painel-area");
+    const formLogin = document.getElementById("form-login");
+    const senhaInput = document.getElementById("senha-input");
+    const loginErro = document.getElementById("login-erro");
+
+    formLogin.addEventListener("submit", (e) => {
+      e.preventDefault();
+      senha = senhaInput.value;
+      sessionStorage.setItem("dashSenha", senha);
+      carregar(true);
+    });
+
+    document.getElementById("btn-sair").addEventListener("click", () => {
+      sessionStorage.removeItem("dashSenha");
+      senha = "";
+      painelArea.hidden = true;
+      loginArea.hidden = false;
+    });
+
+    document.getElementById("btn-atualizar").addEventListener("click", () => carregar(true));
+
+    document.getElementById("btn-toggle-ia").addEventListener("click", () =>
+      admin({ acao: "toggle-ia" })
+    );
+
+    document.getElementById("btn-reset").addEventListener("click", () => {
+      if (confirm("Apagar todas as estatísticas? Isso não pode ser desfeito.")) {
+        admin({ acao: "reset" });
+      }
+    });
+
+    async function admin(payload) {
+      const r = await fetch(API + "admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senha, ...payload })
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        alert(d.erro || "Erro ao executar a ação.");
+        return;
+      }
+      carregar(false);
+    }
+
+    async function carregar(erroVisivel) {
+      try {
+        const r = await fetch(API + "stats?senha=" + encodeURIComponent(senha));
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.erro || "erro");
+
+        loginArea.hidden = true;
+        painelArea.hidden = false;
+        render(d);
+      } catch (e) {
+        sessionStorage.removeItem("dashSenha");
+        painelArea.hidden = true;
+        loginArea.hidden = false;
+        if (erroVisivel) loginErro.textContent = "Senha incorreta ou falha de conexão.";
+        senha = "";
+      }
+    }
+
+    function render(d) {
+      document.getElementById("c-visitas").textContent = d.totalVisitas;
+      document.getElementById("c-mensagens").textContent = d.totalMensagens;
+      document.getElementById("c-erros").textContent = d.totalErros;
+      document.getElementById("c-hoje-visitas").textContent = d.hojeVisitas;
+      document.getElementById("c-hoje-msg").textContent = d.hojeMensagens;
+
+      const pill = document.getElementById("status-ia");
+      pill.textContent = d.iaAtiva ? "IA ativa" : "IA em manutenção";
+      pill.className = "status-pill " + (d.iaAtiva ? "on" : "off");
+      document.getElementById("btn-toggle-ia").textContent = d.iaAtiva
+        ? "Desligar IA"
+        : "Ligar IA";
+
+      const g = document.getElementById("grafico");
+      g.innerHTML = "";
+      const max = Math.max(1, ...d.dias.map((x) => Math.max(x.mensagens, x.visitas)));
+
+      d.dias.forEach((x) => {
+        const dia = document.createElement("div");
+        dia.className = "g-dia";
+
+        const barras = document.createElement("div");
+        barras.className = "g-barras";
+
+        const b1 = document.createElement("div");
+        b1.className = "g-bar msg";
+        b1.style.height = Math.max(4, (x.mensagens / max) * 130) + "px";
+        b1.title = x.mensagens + " mensagens";
+
+        const b2 = document.createElement("div");
+        b2.className = "g-bar vis";
+        b2.style.height = Math.max(4, (x.visitas / max) * 130) + "px";
+        b2.title = x.visitas + " visitas";
+
+        barras.appendChild(b1);
+        barras.appendChild(b2);
+
+        const lab = document.createElement("span");
+        lab.className = "g-label";
+        lab.textContent = x.dia.slice(8, 10) + "/" + x.dia.slice(5, 7);
+
+        dia.appendChild(barras);
+        dia.appendChild(lab);
+        g.appendChild(dia);
+      });
+    }
+
+    if (senha) carregar(false);
+    setInterval(() => {
+      if (!painelArea.hidden) carregar(false);
+    }, 30000);
+  </script>
+</body>
+</html>
