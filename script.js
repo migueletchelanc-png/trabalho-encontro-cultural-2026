@@ -1,6 +1,15 @@
 // URL do seu Worker no Cloudflare
 const API_URL = "https://ia-nvidia-proxy.migueletchelanc.workers.dev/";
 
+/* ---------- Contar visita (1x por sessão) ---------- */
+if (!sessionStorage.getItem("visitaContada")) {
+  fetch(API_URL + "visita", { method: "POST" })
+    .then((r) => {
+      if (r.ok) sessionStorage.setItem("visitaContada", "1");
+    })
+    .catch(() => {});
+}
+
 /* ---------- Troca de abas ---------- */
 function trocarAba(nome) {
   document.querySelectorAll(".nav-link").forEach((link) => {
@@ -157,6 +166,11 @@ async function enviarMensagem(texto) {
 
     if (!resposta.ok) {
       console.error("Erro da IA:", dados);
+
+      if (dados && dados.erro === "manutencao") {
+        mensagemIA(dados.mensagem || "A IA está em manutenção no momento.", "");
+        return;
+      }
       throw new Error("erro");
     }
 
