@@ -62,7 +62,72 @@ function mensagemUsuario(texto) {
   rolarFim();
 }
 
-// A MÁGICA DO STREAMING ACONTECE AQUI
+// Função para criar a estrutura da mensagem da IA no HTML
+function criarMensagemIA() {
+  const linha = document.createElement("div");
+  linha.className = "linha ia";
+
+  const avatar = document.createElement("span");
+  avatar.className = "avatar-mini";
+
+  const conteudo = document.createElement("div");
+  conteudo.className = "conteudo-ia";
+
+  const nome = document.createElement("span");
+  nome.className = "nome-ia";
+  nome.textContent = "IA de Apoio";
+
+  const textoEl = document.createElement("div");
+  textoEl.className = "texto-resposta";
+  textoEl.innerHTML = '<span class="digitando"><span></span><span></span><span></span></span>';
+
+  conteudo.appendChild(nome);
+  conteudo.appendChild(textoEl);
+  linha.appendChild(avatar);
+  linha.appendChild(conteudo);
+  mensagensEl.appendChild(linha);
+  rolarFim();
+  
+  return { linha, conteudo, textoEl };
+}
+
+// Adiciona o bloco de "Processo de pensamento" (Estático para não travar a demo)
+function adicionarPensamento(conteudo) {
+  const raciocinioIA = "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
+  
+  const pensamentoBloco = document.createElement("div");
+  pensamentoBloco.className = "pensamento-bloco";
+
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "pensamento-toggle";
+  toggleBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/><path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z" fill="currentColor" opacity="0.3"/></svg>' +
+    '<span>Processo de pensamento</span>' +
+    '<svg class="seta-pens" viewBox="0 0 24 24" width="12" height="12"><path d="M7 10l5 5 5-5z" fill="currentColor"/></svg>';
+
+  const pensamentoConteudo = document.createElement("div");
+  pensamentoConteudo.className = "pensamento-conteudo";
+
+  const pensamentoLabel = document.createElement("div");
+  pensamentoLabel.className = "pensamento-label";
+  pensamentoLabel.textContent = "Como a IA chegou a esta resposta";
+
+  const pensamentoTexto = document.createElement("div");
+  pensamentoTexto.className = "pensamento-texto";
+  pensamentoTexto.textContent = raciocinioIA;
+
+  pensamentoConteudo.appendChild(pensamentoLabel);
+  pensamentoConteudo.appendChild(pensamentoTexto);
+
+  toggleBtn.addEventListener("click", () => {
+    pensamentoBloco.classList.toggle("aberto");
+  });
+
+  pensamentoBloco.appendChild(toggleBtn);
+  pensamentoBloco.appendChild(pensamentoConteudo);
+  conteudo.appendChild(pensamentoBloco);
+}
+
 async function enviarMensagem(texto) {
   if (!texto || enviando) return;
 
@@ -71,30 +136,18 @@ async function enviarMensagem(texto) {
   historico.push({ role: "user", content: texto });
   inputChat.value = "";
 
-  // Cria a bolha da IA vazia com o indicador de "digitando"
-  const linha = document.createElement("div");
-  linha.className = "linha ia";
-  const avatar = document.createElement("span");
-  avatar.className = "avatar-mini";
-  const conteudo = document.createElement("div");
-  conteudo.className = "conteudo-ia";
-  const nome = document.createElement("span");
-  nome.className = "nome-ia";
-  nome.textContent = "IA de Apoio";
+  const { conteudo, textoEl } = criarMensagemIA();
   
-  const textoEl = document.createElement("div");
-  textoEl.className = "texto-resposta";
-  textoEl.innerHTML = '<span class="digitando"><span></span><span></span><span></span></span>';
-  
-  conteudo.appendChild(nome);
-  conteudo.appendChild(textoEl);
-  linha.appendChild(avatar);
-  linha.appendChild(conteudo);
-  mensagensEl.appendChild(linha);
-  rolarFim();
-
   let textoCompleto = "";
   let isPrimeiroToken = true;
+  let falhou = false;
+
+  // ⚠️ TIMEOUT DE SEGURANÇA: Se a NVIDIA travar, em 6 segundos mostra fallback
+  const timeout = setTimeout(() => {
+    falhou = true;
+    textoEl.textContent = "A conexão com a IA está instável neste momento, mas a interface está funcionando perfeitamente. (Modo Demonstração)";
+    enviando = false;
+  }, 6000); // 6 segundos
 
   try {
     // CHAMADA COM STREAMING ATIVADO
@@ -112,26 +165,25 @@ async function enviarMensagem(texto) {
     let buffer = "";
 
     while (true) {
+      if (falhou) break; // Sai do loop se o timeout ativou
       const { done, value } = await reader.read();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
       const linhas = buffer.split("\n");
-      buffer = linhas.pop(); 
+      buffer = linhas.pop();
 
       for (const linhaStream of linhas) {
         if (linhaStream.startsWith("data: ")) {
           const dadosStr = linhaStream.slice(6);
           if (dadosStr === "[DONE]") continue;
-
           try {
             const json = JSON.parse(dadosStr);
             const token = json.choices?.[0]?.delta?.content || "";
-            
             if (token) {
-              if (isPrimeiroToken) {
+              if (isPrimeiroToken) { 
                 textoEl.innerHTML = ""; // Remove os pontinhos de digitando
-                isPrimeiroToken = false;
+                isPrimeiroToken = false; 
               }
               textoCompleto += token;
               textoEl.textContent = textoCompleto; // Atualiza a tela ao vivo!
@@ -141,28 +193,19 @@ async function enviarMensagem(texto) {
         }
       }
     }
-
-    // Adiciona o bloco de raciocínio (geramos um texto estático rápido para não travar a demo)
-    const raciocinioIA = "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
-    const pensamentoBloco = document.createElement("div");
-    pensamentoBloco.className = "pensamento-bloco";
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "pensamento-toggle";
-    toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/><path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z" fill="currentColor" opacity="0.3"/></svg><span>Processo de pensamento</span><svg class="seta-pens" viewBox="0 0 24 24" width="12" height="12"><path d="M7 10l5 5 5-5z" fill="currentColor"/></svg>';
-    const pensamentoConteudo = document.createElement("div");
-    pensamentoConteudo.className = "pensamento-conteudo";
-    pensamentoConteudo.innerHTML = `<div class="pensamento-label">Como a IA chegou a esta resposta</div><div class="pensamento-texto">${raciocinioIA}</div>`;
-    toggleBtn.addEventListener("click", () => pensamentoBloco.classList.toggle("aberto"));
-    pensamentoBloco.appendChild(toggleBtn);
-    pensamentoBloco.appendChild(pensamentoConteudo);
-    conteudo.appendChild(pensamentoBloco);
-
-    historico.push({ role: "assistant", content: textoCompleto });
+    
+    // Se deu certo, adiciona o bloco de pensamento no final
+    if (!falhou && textoCompleto.trim() !== "") {
+       adicionarPensamento(conteudo);
+       historico.push({ role: "assistant", content: textoCompleto });
+    }
 
   } catch (erro) {
-    console.error(erro);
-    textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
+    if (!falhou) {
+      textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
+    }
   } finally {
+    clearTimeout(timeout); // Cancela o alerta se deu tudo certo
     enviando = false;
   }
 }
