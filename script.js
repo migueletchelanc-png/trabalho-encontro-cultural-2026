@@ -1,4 +1,6 @@
 const API_URL = "https://ia-nvidia-proxy.migueletchelanc.workers.dev/";
+const STORAGE_KEY = "chat_historico_v1";
+const MAX_HISTORY = 40; // limita o contexto enviado à API
 
 /* ---------- Contar visita ---------- */
 if (!sessionStorage.getItem("visitaContada")) {
@@ -6,6 +8,78 @@ if (!sessionStorage.getItem("visitaContada")) {
     .then((r) => { if (r.ok) sessionStorage.setItem("visitaContada", "1"); })
     .catch(() => {});
 }
+
+/* ---------- Utilitários ---------- */
+const $ = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+
+function escaparHTML(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function horaAgora() {
+  return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+/* ---------- Markdown-lite (seguro: escapa HTML primeiro) ---------- */
+function renderMarkdown(src) {
+  let html = escaparHTML(src);
+
+  // Blocos de código ```lang ... ``` com botão de copiar
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    return `<div class="code-bloco"><div class="code-topo"><span>${lang || "code"}</span>` +
+      `<button class="btn-copiar-codigo" type="button">Copiar</button></div>` +
+      `<pre><code>${code.replace(/\n$/, "")}</code></pre></div>`;
+  });
+
+  // Código inline
+  html = html.replace(/`([^`\n]+)`/g, "<code class=\"code-inline\">$1</code>");
+  // Negrito / itálico / tachado
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  html = html.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  // Títulos
+  html = html.replace(/^### (.+)$/gm, "<h4>$1</h4>").replace(/^## (.+)$/gm, "<h3>$1</h3>").replace(/^# (.+)$/gm, "<h2>$1</h2>");
+  // Listas
+  html = html.replace(/(?:^|\n)((?:\s*[-*•] .+(?:\n|$))+)/g, (m, bloco) => {
+    const itens = bloco.trim().split("\n").map((l) => `<li>${l.replace(/^\s*[-*•]\s+/, "")}</li>`).join("");
+    return `\n<ul>${itens}</ul>`;
+  });
+  html = html.replace(/(?:^|\n)((?:\s*\d+[\.\)] .+(?:\n|$))+)/g, (m, bloco) => {
+    const itens = bloco.trim().split("\n").map((l) => `<li>${l.replace(/^\s*\d+[\.\)]\s+/, "")}</li>`).join("");
+    return `\n<ol>${itens}</ol>`;
+  });
+  // Citações
+  html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+  // Links
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Parágrafos
+  html = html.split(/\n{2,}/).map((p) => (/^\s*<(h\d|ul|ol|div|blockquote|pre)/.test(p) ? p : `<p>${p.replace(/\n/g, "<br>")}</p>`)).join("");
+  return html;
+}
+
+/* ---------- Copiar para a área de transferência ---------- */
+async function copiarTexto(texto, btn) {
+  try {
+    await navigator.clipboard.writeText(texto);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+  }
+  if (btn) {
+    const original = btn.textContent;
+    btn.textContent = "Copiado!";
+    btn.classList.add("copiado");
+    setTimeout(() => { btn.textContent = original; btn.classList.remove("copiado"); }, 1500);
+  }
+}
+
+/* Delegação: botões "copiar" dentro de blocos de código */
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-copiar-codigo");
+  if (btn) copiarTexto(btn.closest(".code-bloco").querySelector("code").textContent, btn);
+});
 
 /* ---------- Abas ---------- */
 function trocarAba(nome) {
@@ -26,11 +100,98 @@ const mensagensEl = document.getElementById("mensagens");
 const estadoVazio = document.getElementById("estado-vazio");
 const formChat = document.getElementById("form-chat");
 const inputChat = document.getElementById("input-chat");
+const btnEnviar = formChat.querySelector('[type="submit"], button:not([type])');
 
 let historico = [];
 let enviando = false;
+let abortController = null;
+let ultimaPergunta = "";
 
-function rolarFim() { mensagensEl.scrollTop = mensagensEl.scrollHeight; }
+/* Restaura conversa salva */
+try {
+  const salvo = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  if (Array.isArray(salvo) && salvo.length) historico = salvo;
+} catch {}
+
+function salvarHistorico() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(historico.slice(-MAX_HISTORY))); } catch {}
+}
+
+/* Rolagem inteligente: só cola no fim se o usuário já estiver perto do fim */
+function pertoDoFim() {
+  return mensagensEl.scrollHeight - mensagensEl.scrollTop - mensagensEl.clientHeight < 120;
+}
+function rolarFim(forcar = false) {
+  if (forcar || pertoDoFim()) mensagensEl.scrollTop = mensagensEl.scrollHeight;
+}
+
+/* ---------- Textarea auto-expansível + Enter envia ---------- */
+function autoResize() {
+  inputChat.style.height = "auto";
+  inputChat.style.height = Math.min(inputChat.scrollHeight, 180) + "px";
+}
+inputChat.addEventListener("input", autoResize);
+inputChat.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    formChat.requestSubmit();
+  }
+});
+
+/* ---------- Botão Enviar <-> Parar ---------- */
+function modoParar(ativo) {
+  if (!btnEnviar) return;
+  if (ativo) {
+    btnEnviar.dataset.labelOriginal = btnEnviar.innerHTML;
+    btnEnviar.innerHTML = "&#9632;"; // quadrado = stop
+    btnEnviar.classList.add("parar");
+    btnEnviar.type = "button";
+    btnEnviar.onclick = () => abortController?.abort();
+  } else {
+    btnEnviar.innerHTML = btnEnviar.dataset.labelOriginal || "Enviar";
+    btnEnviar.classList.remove("parar");
+    btnEnviar.type = "submit";
+    btnEnviar.onclick = null;
+  }
+}
+
+/* ---------- Ações de mensagem (copiar / regenerar) ---------- */
+function barraAcoes(textoPlano, { regenerar = false } = {}) {
+  const barra = document.createElement("div");
+  barra.className = "msg-acoes";
+
+  const btnCopiar = document.createElement("button");
+  btnCopiar.type = "button";
+  btnCopiar.className = "msg-acao";
+  btnCopiar.title = "Copiar";
+  btnCopiar.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>';
+  btnCopiar.addEventListener("click", () => copiarTexto(textoPlano, btnCopiar));
+  barra.appendChild(btnCopiar);
+
+  if (regenerar) {
+    const btnRegen = document.createElement("button");
+    btnRegen.type = "button";
+    btnRegen.className = "msg-acao";
+    btnRegen.title = "Regenerar resposta";
+    btnRegen.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08a6 6 0 1 1-1.41-6.24L13 11h7V4l-2.35 2.35z"/></svg>';
+    btnRegen.addEventListener("click", () => {
+      if (enviando || !ultimaPergunta) return;
+      // Remove a última resposta do histórico e da tela, depois reenvia
+      if (historico.at(-1)?.role === "assistant") historico.pop();
+      const linhas = $$(".linha.ia", mensagensEl);
+      linhas.at(-1)?.remove();
+      salvarHistorico();
+      enviarMensagem(ultimaPergunta, { silencioso: true });
+    });
+    barra.appendChild(btnRegen);
+  }
+
+  const hora = document.createElement("span");
+  hora.className = "msg-hora";
+  hora.textContent = horaAgora();
+  barra.appendChild(hora);
+  return barra;
+}
 
 function mensagemUsuario(texto) {
   estadoVazio.style.display = "none";
@@ -40,8 +201,9 @@ function mensagemUsuario(texto) {
   bolha.className = "bolha-usuario";
   bolha.textContent = texto;
   linha.appendChild(bolha);
+  linha.appendChild(barraAcoes(texto));
   mensagensEl.appendChild(linha);
-  rolarFim();
+  rolarFim(true);
 }
 
 /* ===== FILTROS DE PENSAMENTO ===== */
@@ -86,7 +248,7 @@ function criarMensagemIA() {
   return { conteudo, textoEl };
 }
 
-/* Cria (ou reaproveita) a caixinha de pensamento e devolve referências */
+/* Cria (ou reaproveita) a caixinha de pensamento */
 function garantirPensamento(conteudo) {
   let bloco = conteudo.querySelector(".pensamento-bloco");
   if (bloco) return { bloco, texto: bloco.querySelector(".pensamento-texto") };
@@ -115,40 +277,32 @@ function garantirPensamento(conteudo) {
   return { bloco, texto: pensamentoTexto };
 }
 
-async function enviarMensagem(texto) {
+async function enviarMensagem(texto, { silencioso = false } = {}) {
   if (!texto || enviando) return;
   enviando = true;
-  mensagemUsuario(texto);
-  historico.push({ role: "user", content: texto });
+  ultimaPergunta = texto;
+  abortController = new AbortController();
+  modoParar(true);
+
+  if (!silencioso) {
+    mensagemUsuario(texto);
+    historico.push({ role: "user", content: texto });
+  }
   inputChat.value = "";
+  autoResize();
 
   const { conteudo, textoEl } = criarMensagemIA();
 
   let bruto = "";
   let racApi = "";
   let mostrando = false;
-  let falhou = false;
-
-  /* TIMER INTELIGENTE: só falha se ficar 12s sem chegar NADA,
-     ou se passar de 60s no total. Enquanto chegar qualquer token,
-     o timer "reinicia" sozinho. */
-  let ultimoToken = Date.now();
-  const inicio = Date.now();
-  const watcher = setInterval(() => {
-    if (falhou) return;
-    const agora = Date.now();
-    if (agora - inicio > 60000 || agora - ultimoToken > 12000) {
-      falhou = true;
-      textoEl.textContent = "A conexão com a IA está instável neste momento, mas a interface está funcionando perfeitamente. (Modo Demonstração)";
-      enviando = false;
-    }
-  }, 500);
 
   try {
     const resposta = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: historico, stream: true })
+      body: JSON.stringify({ messages: historico.slice(-MAX_HISTORY), stream: true }),
+      signal: abortController.signal
     });
 
     if (!resposta.ok) {
@@ -157,12 +311,12 @@ async function enviarMensagem(texto) {
       throw new Error("Erro na API");
     }
 
+    /* Lê o stream pelo tempo que for preciso — SEM TIMER */
     const reader = resposta.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
 
     while (true) {
-      if (falhou) break;
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -177,7 +331,6 @@ async function enviarMensagem(texto) {
         try {
           const json = JSON.parse(dadosStr);
           const delta = json.choices?.[0]?.delta || {};
-          ultimoToken = Date.now(); // qualquer dado recebido reinicia o timer
 
           if (delta.reasoning_content) racApi += delta.reasoning_content;
           if (delta.reasoning) racApi += delta.reasoning;
@@ -195,56 +348,92 @@ async function enviarMensagem(texto) {
           const visivel = textoVisivel(bruto);
           if (visivel) {
             if (!mostrando) { textoEl.innerHTML = ""; mostrando = true; }
-            textoEl.textContent = visivel;
+            textoEl.innerHTML = renderMarkdown(visivel) + '<span class="cursor-stream"></span>';
             rolarFim();
           }
         } catch (e) {}
       }
     }
 
-    if (!falhou) {
-      let textoFinal = textoVisivel(bruto).trim();
-      let racFinal = racApi || extrairThink(bruto);
+    /* Fim do stream: monta a resposta final */
+    let textoFinal = textoVisivel(bruto).trim();
+    let racFinal = racApi || extrairThink(bruto);
 
-      if (!textoFinal && REG_COG.test(bruto)) {
-        const resgate = resgatarResposta(bruto);
-        if (resgate) {
-          textoFinal = resgate.texto;
-          racFinal = (racFinal + "\n\n" + resgate.raciocinio).trim();
-        } else {
-          racFinal = racFinal || bruto;
-        }
+    if (!textoFinal && REG_COG.test(bruto)) {
+      const resgate = resgatarResposta(bruto);
+      if (resgate) {
+        textoFinal = resgate.texto;
+        racFinal = (racFinal + "\n\n" + resgate.raciocinio).trim();
+      } else {
+        racFinal = racFinal || bruto;
       }
-
-      if (!textoFinal) {
-        textoFinal = "Estou aqui com você. 💛 Respira fundo e me conta: o que está pesando mais no seu dia hoje?";
-        if (!racFinal) racFinal = bruto;
-      }
-
-      textoEl.textContent = textoFinal;
-
-      /* Fecha a caixinha e deixa o raciocínio final registrado */
-      const refs = garantirPensamento(conteudo);
-      refs.texto.textContent = racFinal && racFinal.trim()
-        ? racFinal.trim()
-        : "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
-      refs.bloco.classList.remove("aberto");
-
-      historico.push({ role: "assistant", content: textoFinal });
-      rolarFim();
     }
+
+    if (!textoFinal) {
+      textoFinal = "Estou aqui com você. 💛 Respira fundo e me conta: o que está pesando mais no seu dia hoje?";
+      if (!racFinal) racFinal = bruto;
+    }
+
+    textoEl.innerHTML = renderMarkdown(textoFinal);
+    conteudo.appendChild(barraAcoes(textoFinal, { regenerar: true }));
+
+    const refs = garantirPensamento(conteudo);
+    refs.texto.textContent = racFinal && racFinal.trim()
+      ? racFinal.trim()
+      : "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
+    refs.bloco.classList.remove("aberto");
+
+    historico.push({ role: "assistant", content: textoFinal });
+    salvarHistorico();
+    rolarFim();
   } catch (erro) {
-    if (!falhou) textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
+    if (erro.name === "AbortError") {
+      /* Usuário clicou em Parar: mantém o que já foi gerado */
+      const parcial = textoVisivel(bruto).trim();
+      textoEl.innerHTML = parcial
+        ? renderMarkdown(parcial) + '<p class="interrompido"><em>⏹ Resposta interrompida.</em></p>'
+        : "<em>Resposta interrompida.</em>";
+      if (parcial) {
+        historico.push({ role: "assistant", content: parcial });
+        salvarHistorico();
+      }
+      conteudo.appendChild(barraAcoes(parcial || "", { regenerar: true }));
+    } else {
+      /* Erro real de rede/API */
+      textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
+      conteudo.appendChild(barraAcoes("", { regenerar: true }));
+    }
   } finally {
-    clearInterval(watcher);
     enviando = false;
+    abortController = null;
+    modoParar(false);
+    inputChat.focus({ preventScroll: true });
   }
 }
 
 formChat.addEventListener("submit", (e) => { e.preventDefault(); enviarMensagem(inputChat.value.trim()); });
 document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => enviarMensagem(c.dataset.texto)));
 document.getElementById("nova-conversa").addEventListener("click", () => {
+  abortController?.abort();
   historico = [];
+  ultimaPergunta = "";
+  localStorage.removeItem(STORAGE_KEY);
   mensagensEl.querySelectorAll(".linha").forEach((el) => el.remove());
   estadoVazio.style.display = "block";
 });
+
+/* ---------- Reidrata conversa salva ao carregar ---------- */
+(function reidratar() {
+  if (!historico.length) return;
+  estadoVazio.style.display = "none";
+  for (const msg of historico) {
+    if (msg.role === "user") {
+      mensagemUsuario(msg.content);
+    } else if (msg.role === "assistant") {
+      const { conteudo, textoEl } = criarMensagemIA();
+      textoEl.innerHTML = renderMarkdown(msg.content);
+      conteudo.appendChild(barraAcoes(msg.content, { regenerar: false }));
+    }
+  }
+  rolarFim(true);
+})();
