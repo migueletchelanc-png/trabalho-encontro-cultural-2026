@@ -48,19 +48,14 @@ function mensagemUsuario(texto) {
 const REG_COG = /^\s*(Here'?s a thinking process|Thinking process|Processo de pensamento|Let me think|Thinking)[:\s]/i;
 
 function textoVisivel(bruto) {
-  // Remove blocos <think>...</think> (fechados ou abertos até o fim)
   let t = bruto.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
-  // Se ainda começa com CoT em texto puro, não mostra nada ainda
   if (REG_COG.test(t)) return "";
   return t.trimStart();
 }
-
 function extrairThink(bruto) {
   const m = bruto.match(/<think>([\s\S]*?)(<\/think>|$)/);
   return m ? m[1].trim() : "";
 }
-
-// Última chance: se o CoT vazou inteiro, tenta pegar o último parágrafo como resposta
 function resgatarResposta(bruto) {
   const blocos = bruto.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
   for (let i = blocos.length - 1; i >= 0; i--) {
@@ -91,13 +86,13 @@ function criarMensagemIA() {
   return { conteudo, textoEl };
 }
 
-function adicionarPensamento(conteudo, raciocinioReal) {
-  const raciocinioIA = raciocinioReal && raciocinioReal.trim()
-    ? raciocinioReal.trim()
-    : "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
+/* Cria (ou reaproveita) a caixinha de pensamento e devolve referências */
+function garantirPensamento(conteudo) {
+  let bloco = conteudo.querySelector(".pensamento-bloco");
+  if (bloco) return { bloco, texto: bloco.querySelector(".pensamento-texto") };
 
-  const pensamentoBloco = document.createElement("div");
-  pensamentoBloco.className = "pensamento-bloco";
+  bloco = document.createElement("div");
+  bloco.className = "pensamento-bloco";
   const toggleBtn = document.createElement("button");
   toggleBtn.className = "pensamento-toggle";
   toggleBtn.innerHTML =
@@ -111,13 +106,13 @@ function adicionarPensamento(conteudo, raciocinioReal) {
   pensamentoLabel.textContent = "Como a IA chegou a esta resposta";
   const pensamentoTexto = document.createElement("div");
   pensamentoTexto.className = "pensamento-texto";
-  pensamentoTexto.textContent = raciocinioIA;
   pensamentoConteudo.appendChild(pensamentoLabel);
   pensamentoConteudo.appendChild(pensamentoTexto);
-  toggleBtn.addEventListener("click", () => pensamentoBloco.classList.toggle("aberto"));
-  pensamentoBloco.appendChild(toggleBtn);
-  pensamentoBloco.appendChild(pensamentoConteudo);
-  conteudo.appendChild(pensamentoBloco);
+  toggleBtn.addEventListener("click", () => bloco.classList.toggle("aberto"));
+  bloco.appendChild(toggleBtn);
+  bloco.appendChild(pensamentoConteudo);
+  conteudo.appendChild(bloco);
+  return { bloco, texto: pensamentoTexto };
 }
 
 async function enviarMensagem(texto) {
@@ -129,16 +124,25 @@ async function enviarMensagem(texto) {
 
   const { conteudo, textoEl } = criarMensagemIA();
 
-  let bruto = "";            // tudo que a IA mandar em content
-  let racApi = "";           // raciocínio vindo em campo separado (se a API mandar)
-  let mostrando = false;     // já tirou os pontinhos?
+  let bruto = "";
+  let racApi = "";
+  let mostrando = false;
   let falhou = false;
 
-  const timeout = setTimeout(() => {
-    falhou = true;
-    textoEl.textContent = "A conexão com a IA está instável neste momento, mas a interface está funcionando perfeitamente. (Modo Demonstração)";
-    enviando = false;
-  }, 8000);
+  /* TIMER INTELIGENTE: só falha se ficar 12s sem chegar NADA,
+     ou se passar de 60s no total. Enquanto chegar qualquer token,
+     o timer "reinicia" sozinho. */
+  let ultimoToken = Date.now();
+  const inicio = Date.now();
+  const watcher = setInterval(() => {
+    if (falhou) return;
+    const agora = Date.now();
+    if (agora - inicio > 60000 || agora - ultimoToken > 12000) {
+      falhou = true;
+      textoEl.textContent = "A conexão com a IA está instável neste momento, mas a interface está funcionando perfeitamente. (Modo Demonstração)";
+      enviando = false;
+    }
+  }, 500);
 
   try {
     const resposta = await fetch(API_URL, {
@@ -173,9 +177,20 @@ async function enviarMensagem(texto) {
         try {
           const json = JSON.parse(dadosStr);
           const delta = json.choices?.[0]?.delta || {};
+          ultimoToken = Date.now(); // qualquer dado recebido reinicia o timer
+
           if (delta.reasoning_content) racApi += delta.reasoning_content;
           if (delta.reasoning) racApi += delta.reasoning;
           if (delta.content) bruto += delta.content;
+
+          /* Thinking ao vivo dentro da caixinha (aberta) */
+          const pensando = racApi || (REG_COG.test(bruto) ? bruto : "");
+          if (pensando) {
+            const refs = garantirPensamento(conteudo);
+            refs.bloco.classList.add("aberto");
+            refs.texto.textContent = pensando;
+            rolarFim();
+          }
 
           const visivel = textoVisivel(bruto);
           if (visivel) {
@@ -191,30 +206,37 @@ async function enviarMensagem(texto) {
       let textoFinal = textoVisivel(bruto).trim();
       let racFinal = racApi || extrairThink(bruto);
 
-      // Se o CoT vazou em texto puro e nada foi exibido, tenta resgatar a resposta final
       if (!textoFinal && REG_COG.test(bruto)) {
         const resgate = resgatarResposta(bruto);
         if (resgate) {
           textoFinal = resgate.texto;
           racFinal = (racFinal + "\n\n" + resgate.raciocinio).trim();
+        } else {
+          racFinal = racFinal || bruto;
         }
       }
 
-      // Último recurso: mensagem de acolhimento genérica (nunca deixa a bolha vazia)
       if (!textoFinal) {
         textoFinal = "Estou aqui com você. 💛 Respira fundo e me conta: o que está pesando mais no seu dia hoje?";
-        racFinal = racFinal || bruto;
+        if (!racFinal) racFinal = bruto;
       }
 
       textoEl.textContent = textoFinal;
-      adicionarPensamento(conteudo, racFinal);
+
+      /* Fecha a caixinha e deixa o raciocínio final registrado */
+      const refs = garantirPensamento(conteudo);
+      refs.texto.textContent = racFinal && racFinal.trim()
+        ? racFinal.trim()
+        : "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
+      refs.bloco.classList.remove("aberto");
+
       historico.push({ role: "assistant", content: textoFinal });
       rolarFim();
     }
   } catch (erro) {
     if (!falhou) textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
   } finally {
-    clearTimeout(timeout);
+    clearInterval(watcher);
     enviando = false;
   }
 }
