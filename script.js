@@ -1,41 +1,25 @@
-// URL do seu Worker no Cloudflare
 const API_URL = "https://ia-nvidia-proxy.migueletchelanc.workers.dev/";
 
-/* ---------- Contar visita (1x por sessão) ---------- */
+/* ---------- Contar visita ---------- */
 if (!sessionStorage.getItem("visitaContada")) {
   fetch(API_URL + "visita", { method: "POST" })
     .then((r) => { if (r.ok) sessionStorage.setItem("visitaContada", "1"); })
     .catch(() => {});
 }
 
-/* ---------- Troca de abas ---------- */
+/* ---------- Abas ---------- */
 function trocarAba(nome) {
-  document.querySelectorAll(".nav-link").forEach((link) => {
-    link.classList.toggle("ativa", link.dataset.aba === nome);
-  });
-  document.querySelectorAll(".aba-conteudo").forEach((secao) => {
-    secao.classList.remove("ativa");
-  });
+  document.querySelectorAll(".nav-link").forEach((l) => l.classList.toggle("ativa", l.dataset.aba === nome));
+  document.querySelectorAll(".aba-conteudo").forEach((s) => s.classList.remove("ativa"));
   document.getElementById("aba-" + nome).classList.add("ativa");
-
-  if (nome === "artigo") {
-    window.scrollTo({ top: 0 });
-  } else {
-    document.getElementById("input-chat").focus({ preventScroll: true });
-  }
+  if (nome === "artigo") window.scrollTo({ top: 0 });
+  else document.getElementById("input-chat").focus({ preventScroll: true });
 }
-
-document.querySelectorAll("[data-aba]").forEach((el) => {
-  el.addEventListener("click", () => trocarAba(el.dataset.aba));
-});
-
-/* ---------- Botão "Ler o artigo" ---------- */
-document.querySelectorAll("[data-rolar]").forEach((botao) => {
-  botao.addEventListener("click", () => {
-    const alvo = document.getElementById(botao.dataset.rolar);
-    if (alvo) alvo.scrollIntoView({ behavior: "smooth" });
-  });
-});
+document.querySelectorAll("[data-aba]").forEach((el) => el.addEventListener("click", () => trocarAba(el.dataset.aba)));
+document.querySelectorAll("[data-rolar]").forEach((b) => b.addEventListener("click", () => {
+  const alvo = document.getElementById(b.dataset.rolar);
+  if (alvo) alvo.scrollIntoView({ behavior: "smooth" });
+}));
 
 /* ---------- Chat ---------- */
 const mensagensEl = document.getElementById("mensagens");
@@ -46,9 +30,7 @@ const inputChat = document.getElementById("input-chat");
 let historico = [];
 let enviando = false;
 
-function rolarFim() {
-  mensagensEl.scrollTop = mensagensEl.scrollHeight;
-}
+function rolarFim() { mensagensEl.scrollTop = mensagensEl.scrollHeight; }
 
 function mensagemUsuario(texto) {
   estadoVazio.style.display = "none";
@@ -62,67 +44,77 @@ function mensagemUsuario(texto) {
   rolarFim();
 }
 
-// Função para criar a estrutura da mensagem da IA no HTML
+/* ===== FILTROS DE PENSAMENTO ===== */
+const REG_COG = /^\s*(Here'?s a thinking process|Thinking process|Processo de pensamento|Let me think|Thinking)[:\s]/i;
+
+function textoVisivel(bruto) {
+  // Remove blocos <think>...</think> (fechados ou abertos até o fim)
+  let t = bruto.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+  // Se ainda começa com CoT em texto puro, não mostra nada ainda
+  if (REG_COG.test(t)) return "";
+  return t.trimStart();
+}
+
+function extrairThink(bruto) {
+  const m = bruto.match(/<think>([\s\S]*?)(<\/think>|$)/);
+  return m ? m[1].trim() : "";
+}
+
+// Última chance: se o CoT vazou inteiro, tenta pegar o último parágrafo como resposta
+function resgatarResposta(bruto) {
+  const blocos = bruto.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  for (let i = blocos.length - 1; i >= 0; i--) {
+    const b = blocos[i];
+    if (
+      b.length >= 40 &&
+      !/^\d+[\.\)]/.test(b) && !/^[-*•]/.test(b) &&
+      !/^(Thinking|Here'?s|Step \d|Analysis|Identify|Formulate|Avoid|Must|Maybe|No need|Refinement)/i.test(b)
+    ) {
+      return { texto: b, raciocinio: blocos.slice(0, i).join("\n\n") };
+    }
+  }
+  return null;
+}
+
 function criarMensagemIA() {
   const linha = document.createElement("div");
   linha.className = "linha ia";
-
-  const avatar = document.createElement("span");
-  avatar.className = "avatar-mini";
-
-  const conteudo = document.createElement("div");
-  conteudo.className = "conteudo-ia";
-
-  const nome = document.createElement("span");
-  nome.className = "nome-ia";
-  nome.textContent = "IA de Apoio";
-
-  const textoEl = document.createElement("div");
-  textoEl.className = "texto-resposta";
+  const avatar = document.createElement("span"); avatar.className = "avatar-mini";
+  const conteudo = document.createElement("div"); conteudo.className = "conteudo-ia";
+  const nome = document.createElement("span"); nome.className = "nome-ia"; nome.textContent = "IA de Apoio";
+  const textoEl = document.createElement("div"); textoEl.className = "texto-resposta";
   textoEl.innerHTML = '<span class="digitando"><span></span><span></span><span></span></span>';
-
-  conteudo.appendChild(nome);
-  conteudo.appendChild(textoEl);
-  linha.appendChild(avatar);
-  linha.appendChild(conteudo);
+  conteudo.appendChild(nome); conteudo.appendChild(textoEl);
+  linha.appendChild(avatar); linha.appendChild(conteudo);
   mensagensEl.appendChild(linha);
   rolarFim();
-  
-  return { linha, conteudo, textoEl };
+  return { conteudo, textoEl };
 }
 
-// Adiciona o bloco de "Processo de pensamento" (Estático para não travar a demo)
-function adicionarPensamento(conteudo) {
-  const raciocinioIA = "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
-  
+function adicionarPensamento(conteudo, raciocinioReal) {
+  const raciocinioIA = raciocinioReal && raciocinioReal.trim()
+    ? raciocinioReal.trim()
+    : "Analisando o contexto da sua mensagem, identificando sentimentos e buscando a melhor forma de acolher com base em princípios de empatia e saúde mental.";
+
   const pensamentoBloco = document.createElement("div");
   pensamentoBloco.className = "pensamento-bloco";
-
   const toggleBtn = document.createElement("button");
   toggleBtn.className = "pensamento-toggle";
   toggleBtn.innerHTML =
     '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/><path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z" fill="currentColor" opacity="0.3"/></svg>' +
     '<span>Processo de pensamento</span>' +
     '<svg class="seta-pens" viewBox="0 0 24 24" width="12" height="12"><path d="M7 10l5 5 5-5z" fill="currentColor"/></svg>';
-
   const pensamentoConteudo = document.createElement("div");
   pensamentoConteudo.className = "pensamento-conteudo";
-
   const pensamentoLabel = document.createElement("div");
   pensamentoLabel.className = "pensamento-label";
   pensamentoLabel.textContent = "Como a IA chegou a esta resposta";
-
   const pensamentoTexto = document.createElement("div");
   pensamentoTexto.className = "pensamento-texto";
   pensamentoTexto.textContent = raciocinioIA;
-
   pensamentoConteudo.appendChild(pensamentoLabel);
   pensamentoConteudo.appendChild(pensamentoTexto);
-
-  toggleBtn.addEventListener("click", () => {
-    pensamentoBloco.classList.toggle("aberto");
-  });
-
+  toggleBtn.addEventListener("click", () => pensamentoBloco.classList.toggle("aberto"));
   pensamentoBloco.appendChild(toggleBtn);
   pensamentoBloco.appendChild(pensamentoConteudo);
   conteudo.appendChild(pensamentoBloco);
@@ -130,42 +122,43 @@ function adicionarPensamento(conteudo) {
 
 async function enviarMensagem(texto) {
   if (!texto || enviando) return;
-
   enviando = true;
   mensagemUsuario(texto);
   historico.push({ role: "user", content: texto });
   inputChat.value = "";
 
   const { conteudo, textoEl } = criarMensagemIA();
-  
-  let textoCompleto = "";
-  let isPrimeiroToken = true;
+
+  let bruto = "";            // tudo que a IA mandar em content
+  let racApi = "";           // raciocínio vindo em campo separado (se a API mandar)
+  let mostrando = false;     // já tirou os pontinhos?
   let falhou = false;
 
-  // ⚠️ TIMEOUT DE SEGURANÇA: Se a NVIDIA travar, em 6 segundos mostra fallback
   const timeout = setTimeout(() => {
     falhou = true;
     textoEl.textContent = "A conexão com a IA está instável neste momento, mas a interface está funcionando perfeitamente. (Modo Demonstração)";
     enviando = false;
-  }, 6000); // 6 segundos
+  }, 8000);
 
   try {
-    // CHAMADA COM STREAMING ATIVADO
     const resposta = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: historico, stream: true })
     });
 
-    if (!resposta.ok) throw new Error("Erro na API");
+    if (!resposta.ok) {
+      const detalhes = await resposta.text().catch(() => "");
+      console.error("DIAGNÓSTICO DO WORKER:", detalhes);
+      throw new Error("Erro na API");
+    }
 
-    // LER O FLUXO TOKEN POR TOKEN
     const reader = resposta.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
 
     while (true) {
-      if (falhou) break; // Sai do loop se o timeout ativou
+      if (falhou) break;
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -174,53 +167,60 @@ async function enviarMensagem(texto) {
       buffer = linhas.pop();
 
       for (const linhaStream of linhas) {
-        if (linhaStream.startsWith("data: ")) {
-          const dadosStr = linhaStream.slice(6);
-          if (dadosStr === "[DONE]") continue;
-          try {
-            const json = JSON.parse(dadosStr);
-            const token = json.choices?.[0]?.delta?.content || "";
-            if (token) {
-              if (isPrimeiroToken) { 
-                textoEl.innerHTML = ""; // Remove os pontinhos de digitando
-                isPrimeiroToken = false; 
-              }
-              textoCompleto += token;
-              textoEl.textContent = textoCompleto; // Atualiza a tela ao vivo!
-              rolarFim();
-            }
-          } catch (e) { /* Ignora chunks incompletos */ }
-        }
+        if (!linhaStream.startsWith("data: ")) continue;
+        const dadosStr = linhaStream.slice(6);
+        if (dadosStr === "[DONE]") continue;
+        try {
+          const json = JSON.parse(dadosStr);
+          const delta = json.choices?.[0]?.delta || {};
+          if (delta.reasoning_content) racApi += delta.reasoning_content;
+          if (delta.reasoning) racApi += delta.reasoning;
+          if (delta.content) bruto += delta.content;
+
+          const visivel = textoVisivel(bruto);
+          if (visivel) {
+            if (!mostrando) { textoEl.innerHTML = ""; mostrando = true; }
+            textoEl.textContent = visivel;
+            rolarFim();
+          }
+        } catch (e) {}
       }
     }
-    
-    // Se deu certo, adiciona o bloco de pensamento no final
-    if (!falhou && textoCompleto.trim() !== "") {
-       adicionarPensamento(conteudo);
-       historico.push({ role: "assistant", content: textoCompleto });
-    }
 
-  } catch (erro) {
     if (!falhou) {
-      textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
+      let textoFinal = textoVisivel(bruto).trim();
+      let racFinal = racApi || extrairThink(bruto);
+
+      // Se o CoT vazou em texto puro e nada foi exibido, tenta resgatar a resposta final
+      if (!textoFinal && REG_COG.test(bruto)) {
+        const resgate = resgatarResposta(bruto);
+        if (resgate) {
+          textoFinal = resgate.texto;
+          racFinal = (racFinal + "\n\n" + resgate.raciocinio).trim();
+        }
+      }
+
+      // Último recurso: mensagem de acolhimento genérica (nunca deixa a bolha vazia)
+      if (!textoFinal) {
+        textoFinal = "Estou aqui com você. 💛 Respira fundo e me conta: o que está pesando mais no seu dia hoje?";
+        racFinal = racFinal || bruto;
+      }
+
+      textoEl.textContent = textoFinal;
+      adicionarPensamento(conteudo, racFinal);
+      historico.push({ role: "assistant", content: textoFinal });
+      rolarFim();
     }
+  } catch (erro) {
+    if (!falhou) textoEl.textContent = "Tive um probleminha de conexão. Respira fundo e me envia de novo, estou aqui.";
   } finally {
-    clearTimeout(timeout); // Cancela o alerta se deu tudo certo
+    clearTimeout(timeout);
     enviando = false;
   }
 }
 
-formChat.addEventListener("submit", (evento) => {
-  evento.preventDefault();
-  enviarMensagem(inputChat.value.trim());
-});
-
-/* Sugestões iniciais */
-document.querySelectorAll(".chip").forEach((chip) => {
-  chip.addEventListener("click", () => enviarMensagem(chip.dataset.texto));
-});
-
-/* Nova conversa */
+formChat.addEventListener("submit", (e) => { e.preventDefault(); enviarMensagem(inputChat.value.trim()); });
+document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => enviarMensagem(c.dataset.texto)));
 document.getElementById("nova-conversa").addEventListener("click", () => {
   historico = [];
   mensagensEl.querySelectorAll(".linha").forEach((el) => el.remove());
